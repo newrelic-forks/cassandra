@@ -983,10 +983,15 @@ public class StorageProxy implements StorageProxyMBean
     public static void writeHintForMutation(Mutation mutation, long now, int ttl, InetAddress target)
     {
         assert ttl > 0;
+
         UUID hostId = StorageService.instance.getTokenMetadata().getHostId(target);
-        assert hostId != null : "Missing host ID for " + target.getHostAddress();
-        HintedHandOffManager.instance.hintFor(mutation, now, ttl, hostId).apply();
-        StorageMetrics.totalHints.inc();
+        if (hostId != null)
+        {
+            HintedHandOffManager.instance.hintFor(mutation, now, ttl, Pair.create(target, hostId)).apply();
+            StorageMetrics.totalHints.inc();
+        }
+        else
+            logger.debug("Discarding hint for endpoint not part of ring: {}", target);
     }
 
     private static void sendMessagesToNonlocalDC(MessageOut<? extends IMutation> message, Collection<InetAddress> targets, AbstractWriteResponseHandler handler)
@@ -1567,7 +1572,7 @@ public class StorageProxy implements StorageProxyMBean
                 {
                     // use our own mean column count as our estimate for how many matching rows each node will have
                     SecondaryIndex highestSelectivityIndex = searcher.highestSelectivityIndex(command.rowFilter);
-                    resultRowsPerRange = Math.min(resultRowsPerRange, highestSelectivityIndex.estimateResultRows());
+                    resultRowsPerRange = highestSelectivityIndex == null ? resultRowsPerRange : Math.min(resultRowsPerRange, highestSelectivityIndex.estimateResultRows());
                 }
             }
         }
@@ -1858,7 +1863,7 @@ public class StorageProxy implements StorageProxyMBean
     {
         final String myVersion = Schema.instance.getVersion().toString();
         final Map<InetAddress, UUID> versions = new ConcurrentHashMap<InetAddress, UUID>();
-        final Set<InetAddress> liveHosts = Gossiper.instance.getLiveMembers();
+        final Set<InetAddress> liveHosts = Gossiper.instance.getLiveEndpoints();
         final CountDownLatch latch = new CountDownLatch(liveHosts.size());
 
         IAsyncCallback<UUID> cb = new IAsyncCallback<UUID>()
@@ -1892,7 +1897,7 @@ public class StorageProxy implements StorageProxyMBean
 
         // maps versions to hosts that are on that version.
         Map<String, List<String>> results = new HashMap<String, List<String>>();
-        Iterable<InetAddress> allHosts = Iterables.concat(Gossiper.instance.getLiveMembers(), Gossiper.instance.getUnreachableMembers());
+        Iterable<InetAddress> allHosts = Iterables.concat(Gossiper.instance.getLiveEndpoints(), Gossiper.instance.getUnreachableMembers());
         for (InetAddress host : allHosts)
         {
             UUID version = versions.get(host);
@@ -2120,12 +2125,12 @@ public class StorageProxy implements StorageProxyMBean
             // Since the truncate operation is so aggressive and is typically only
             // invoked by an admin, for simplicity we require that all nodes are up
             // to perform the operation.
-            int liveMembers = Gossiper.instance.getLiveMembers().size();
+            int liveMembers = Gossiper.instance.getLiveEndpoints().size();
             throw new UnavailableException(ConsistencyLevel.ALL, liveMembers + Gossiper.instance.getUnreachableMembers().size(), liveMembers);
         }
 
-        Set<InetAddress> allEndpoints = Gossiper.instance.getLiveTokenOwners();
-        
+        Set<InetAddress> allEndpoints = StorageService.instance.getLiveMembers(true);
+
         int blockFor = allEndpoints.size();
         final TruncateResponseHandler responseHandler = new TruncateResponseHandler(blockFor);
 
