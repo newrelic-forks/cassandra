@@ -130,16 +130,14 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
      * Returns a mutation representing a Hint to be sent to <code>targetId</code>
      * as soon as it becomes available again.
      */
-    public Mutation hintFor(Mutation mutation, long now, int ttl, UUID targetId)
+    public Mutation hintFor(Mutation mutation, long now, int ttl, Pair<InetAddress, UUID> target)
     {
         assert ttl > 0;
 
-        InetAddress endpoint = StorageService.instance.getTokenMetadata().getEndpointForHostId(targetId);
-        // during tests we may not have a matching endpoint, but this would be unexpected in real clusters
-        if (endpoint != null)
-            metrics.incrCreatedHints(endpoint);
-        else
-            logger.warn("Unable to find matching endpoint for target {} when storing a hint", targetId);
+        InetAddress endpoint = target.left;
+        UUID targetId = target.right;
+
+        metrics.incrCreatedHints(endpoint);
 
         UUID hintId = UUIDGen.getTimeUUID();
         // serialize the hint with id and version as a composite column name
@@ -219,7 +217,11 @@ public class HintedHandOffManager implements HintedHandOffManagerMBean
     {
         if (!StorageService.instance.getTokenMetadata().isMember(endpoint))
             return;
+
         UUID hostId = StorageService.instance.getTokenMetadata().getHostId(endpoint);
+        if (hostId == null)
+            return;
+
         ByteBuffer hostIdBytes = ByteBuffer.wrap(UUIDGen.decompose(hostId));
         final Mutation mutation = new Mutation(Keyspace.SYSTEM_KS, hostIdBytes);
         mutation.delete(SystemKeyspace.HINTS_CF, System.currentTimeMillis());

@@ -901,6 +901,18 @@ public class NodeProbe implements AutoCloseable
         }
     }
 
+    public void refreshSizeEstimates()
+    {
+        try
+        {
+            ssProxy.refreshSizeEstimates();
+        }
+        catch (ExecutionException e)
+        {
+            throw new RuntimeException("Error while refreshing system.size_estimates", e);
+        }
+    }
+
     public void stopNativeTransport()
     {
         ssProxy.stopNativeTransport();
@@ -1368,7 +1380,8 @@ class ThreadPoolProxyMBeanIterator implements Iterator<Map.Entry<String, JMXEnab
     {
         Set<ObjectName> requests = mbeanServerConn.queryNames(new ObjectName("org.apache.cassandra.request:type=*"), null);
         Set<ObjectName> internal = mbeanServerConn.queryNames(new ObjectName("org.apache.cassandra.internal:type=*"), null);
-        resIter = Iterables.concat(requests, internal).iterator();
+        Set<ObjectName> transport = mbeanServerConn.queryNames(new ObjectName("org.apache.cassandra.transport:type=*"), null);
+        resIter = Iterables.concat(requests, internal, transport).iterator();
         this.mbeanServerConn = mbeanServerConn;
     }
 
