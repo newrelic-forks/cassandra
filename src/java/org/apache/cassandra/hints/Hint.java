@@ -40,19 +40,20 @@ import static org.apache.cassandra.db.TypeSizes.sizeof;
 import static org.apache.cassandra.db.TypeSizes.sizeofUnsignedVInt;
 
 /**
- * Encapsulates the hinted mutation, its creation time, and the gc grace seconds param for each table involved.
+ * Encapsulates the hinted mutation, its creation time, and the hint TTL param for each table involved.
  *
  * - Why do we need to track hint creation time?
  * - We must exclude updates for tables that have been truncated after hint's creation, otherwise the result is data corruption.
  *
- * - Why do we need to track gc grace seconds?
- * - Hints can stay in storage for a while before being applied, and without recording gc grace seconds (+ creation time),
- *   if we apply the mutation blindly, we risk resurrecting a deleted value, a tombstone for which had been already
- *   compacted away while the hint was in storage.
+ * - How is the hint HTL calculated?
+ * - The hint TTL is the smallest hint TTL value for all tables involved in the mutation. If a table does not have a hint TTL set,
+ *   gc_grace_period is used. The reason for using gc_grace_period is that hints can stay in storage for a while before being applied,
+ *   and without recording gc grace seconds (+ creation time), if we apply the mutation blindly, we risk resurrecting a deleted value,
+ *   a tombstone for which had been already compacted away while the hint was in storage.
  *
- *   We also look at the smallest current value of the gcgs param for each affected table when applying the hint, and use
- *   creation time + min(recorded gc gs, current gcgs + current gc grace) as the overall hint expiration time.
- *   This allows now to safely reduce gc gs on tables without worrying that an applied old hint might resurrect any data.
+ *   We also look at the smallest current value of the TTL for each affected table when applying the hint, and use
+ *   creation time + min(recorded TTL, current TTL) as the overall hint expiration time.
+ *   This allows now to safely reduce gc gs or hint TT: on tables without worrying that an applied old hint might resurrect any data.
  */
 public final class Hint
 {
@@ -61,13 +62,13 @@ public final class Hint
 
     final Mutation mutation;
     final long creationTime;  // time of hint creation (in milliseconds)
-    final int gcgs; // the smallest gc gs of all involved tables (in seconds)
+    final int ttl; // the TTL for the hint
 
-    private Hint(Mutation mutation, long creationTime, int gcgs)
+    private Hint(Mutation mutation, long creationTime, int ttl)
     {
         this.mutation = mutation;
         this.creationTime = creationTime;
-        this.gcgs = gcgs;
+        this.ttl = ttl;
     }
 
     /**
@@ -76,17 +77,17 @@ public final class Hint
      */
     public static Hint create(Mutation mutation, long creationTime)
     {
-        return new Hint(mutation, creationTime, mutation.smallestGCGS());
+        return new Hint(mutation, creationTime, mutation.smallestHintTTL());
     }
 
     /*
      * @param mutation the hinted mutation
      * @param creationTime time of this hint's creation (in milliseconds since epoch)
-     * @param gcgs the smallest gcgs of all tables involved at the time of hint creation (in seconds)
+     * @param ttk the smallest hint TTL of all tables involved at the time of hint creation (in seconds)
      */
-    public static Hint create(Mutation mutation, long creationTime, int gcgs)
+    public static Hint create(Mutation mutation, long creationTime, int ttl)
     {
-        return new Hint(mutation, creationTime, gcgs);
+        return new Hint(mutation, creationTime, ttl);
     }
 
     /**
@@ -122,11 +123,11 @@ public final class Hint
     }
 
     /**
-     * @return the overall ttl of the hint - the minimum of all mutation's tables' gc gs now and at the time of creation
+     * @return the overall ttl of the hint - the minimum of all mutation's tables' hint TTL or gc gs now and at the time of creation
      */
     int ttl()
     {
-        return Math.min(gcgs, mutation.smallestGCGS());
+        return Math.min(ttl, mutation.smallestHintTTL());
     }
 
     /**
@@ -148,7 +149,7 @@ public final class Hint
         public long serializedSize(Hint hint, int version)
         {
             long size = sizeof(hint.creationTime);
-            size += sizeofUnsignedVInt(hint.gcgs);
+            size += sizeofUnsignedVInt(hint.ttl);
             size += hint.mutation.serializedSize(version);
             return size;
         }
@@ -156,15 +157,15 @@ public final class Hint
         public void serialize(Hint hint, DataOutputPlus out, int version) throws IOException
         {
             out.writeLong(hint.creationTime);
-            out.writeUnsignedVInt(hint.gcgs);
+            out.writeUnsignedVInt(hint.ttl);
             Mutation.serializer.serialize(hint.mutation, out, version);
         }
 
         public Hint deserialize(DataInputPlus in, int version) throws IOException
         {
             long creationTime = in.readLong();
-            int gcgs = (int) in.readUnsignedVInt();
-            return new Hint(Mutation.serializer.deserialize(in, version), creationTime, gcgs);
+            int ttl = (int) in.readUnsignedVInt();
+            return new Hint(Mutation.serializer.deserialize(in, version), creationTime, ttl);
         }
 
         public long getHintCreationTime(ByteBuffer hintBuffer, int version)

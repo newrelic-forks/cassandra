@@ -112,6 +112,7 @@ final class SchemaKeyspace
               + "max_index_interval int,"
               + "memtable_flush_period_in_ms int,"
               + "min_index_interval int,"
+              + "hint_time_to_live_seconds int,"
               + "read_repair_chance double," // no longer used, left for drivers' sake
               + "speculative_retry text,"
               + "additional_write_policy text,"
@@ -177,6 +178,7 @@ final class SchemaKeyspace
               + "id uuid,"
               + "include_all_columns boolean,"
               + "max_index_interval int,"
+              + "hint_time_to_live_seconds int,"
               + "memtable_flush_period_in_ms int,"
               + "min_index_interval int,"
               + "read_repair_chance double," // no longer used, left for drivers' sake
@@ -534,6 +536,7 @@ final class SchemaKeyspace
                .add("max_index_interval", params.maxIndexInterval)
                .add("memtable_flush_period_in_ms", params.memtableFlushPeriodInMs)
                .add("min_index_interval", params.minIndexInterval)
+               .add("hint_time_to_live_seconds", params.hintTimeToLiveSeconds)
                .add("read_repair_chance", 0.0) // no longer used, left for drivers' sake
                .add("speculative_retry", params.speculativeRetry.toString())
                .add("additional_write_policy", params.additionalWritePolicy.toString())
@@ -957,6 +960,7 @@ final class SchemaKeyspace
                           .maxIndexInterval(row.getInt("max_index_interval"))
                           .memtableFlushPeriodInMs(row.getInt("memtable_flush_period_in_ms"))
                           .minIndexInterval(row.getInt("min_index_interval"))
+                          .hintTimeToLiveSeconds(row.has("hint_time_to_live_seconds") ? row.getInt("hint_time_to_live_seconds") : TableParams.DEFAULT_HINT_TIME_TO_LIVE_SECONDS)
                           .crcCheckChance(row.getDouble("crc_check_chance"))
                           .speculativeRetry(SpeculativeRetryPolicy.fromString(row.getString("speculative_retry")))
                           .additionalWritePolicy(row.has("additional_write_policy") ?

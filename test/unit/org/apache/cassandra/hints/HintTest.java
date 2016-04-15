@@ -48,6 +48,7 @@ import org.apache.cassandra.schema.KeyspaceParams;
 import org.apache.cassandra.schema.Schema;
 import org.apache.cassandra.schema.TableMetadata;
 import org.apache.cassandra.schema.MigrationManager;
+import org.apache.cassandra.schema.TableParams;
 import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.FBUtilities;
@@ -78,7 +79,7 @@ public class HintTest
     }
 
     @Before
-    public void resetGcGraceSeconds()
+    public void resetGcGraceSecondsAndHintTTL()
     {
         TokenMetadata tokenMeta = StorageService.instance.getTokenMetadata();
         InetAddressAndPort local = FBUtilities.getBroadcastAddressAndPort();
@@ -87,7 +88,8 @@ public class HintTest
         tokenMeta.updateNormalTokens(BootStrapper.getRandomTokens(tokenMeta, 1), local);
 
         for (TableMetadata table : Schema.instance.getTablesAndViews(KEYSPACE))
-            MigrationManager.announceTableUpdate(table.unbuild().gcGraceSeconds(864000).build(), true);
+            MigrationManager.announceTableUpdate(
+                table.unbuild().gcGraceSeconds(864000).hintTimeToLiveSeoncds(TableParams.DEFAULT_HINT_TIME_TO_LIVE_SECONDS).build(), true);
     }
 
     @Test
@@ -216,6 +218,36 @@ public class HintTest
         assertNoPartitions(key, TABLE0);
         assertNoPartitions(key, TABLE1);
         assertNoPartitions(key, TABLE2);
+    }
+
+    @Test
+    public void testApplyWithTTL()
+    {
+        long now = FBUtilities.timestampMicros();
+        String key = "testApplyWithTTL";
+
+        // sanity check that there is no data inside yet
+        assertNoPartitions(key, TABLE0);
+        assertNoPartitions(key, TABLE1);
+        assertNoPartitions(key, TABLE2);
+
+        // lower the GC GS on TABLE0 to 0, but set hint TTL to something bigger
+        TableMetadata updated =
+        Schema.instance
+        .getTableMetadata(KEYSPACE, TABLE0)
+        .unbuild()
+        .gcGraceSeconds(0)
+        .hintTimeToLiveSeoncds(7200)
+        .build();
+        MigrationManager.announceTableUpdate(updated, true);
+
+        Mutation mutation = createMutation(key, now);
+        Hint hint = Hint.create(mutation, now / 1000);
+        hint.apply();
+
+        // the updates should have been applied
+        for (PartitionUpdate partition : mutation.getPartitionUpdates())
+            assertPartitionsEqual(partition, readPartition(key, partition.metadata().name, partition.columns()));
     }
 
     @SuppressWarnings("unchecked")

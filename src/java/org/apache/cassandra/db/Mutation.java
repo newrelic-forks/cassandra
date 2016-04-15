@@ -37,6 +37,7 @@ import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.schema.Schema;
 import org.apache.cassandra.schema.TableId;
 import org.apache.cassandra.schema.TableMetadata;
+import org.apache.cassandra.schema.TableParams;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 import static org.apache.cassandra.net.MessagingService.VERSION_30;
@@ -245,6 +246,20 @@ public class Mutation implements IMutation
         for (PartitionUpdate update : getPartitionUpdates())
             gcgs = Math.min(gcgs, update.metadata().params.gcGraceSeconds);
         return gcgs;
+    }
+
+    public int smallestHintTTL()
+    {
+        int ttl = Integer.MAX_VALUE;
+        for (PartitionUpdate update : getPartitionUpdates())
+        {
+            int hintTTL = update.metadata().params.hintTimeToLiveSeconds;
+            if (hintTTL == TableParams.DEFAULT_HINT_TIME_TO_LIVE_SECONDS)
+                hintTTL = update.metadata().params.gcGraceSeconds;
+
+            ttl = Math.min(ttl, hintTTL);
+        }
+        return ttl;
     }
 
     public boolean trackedByCDC()
