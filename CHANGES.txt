@@ -1,3 +1,7 @@
+3.7-newrelic-v11
+Merged from 3.9:
+ * Restore resumable hints delivery (CASSANDRA-11960)
+
 3.7-newrelic-v10
 Merged from 3.11:
  * Faster StreamingHistogram (CASSANDRA-13038)
