@@ -1,3 +1,7 @@
+3.11.14-newrelic-v1
+Merged from 3.7-newrelic-v1:
+ * Add a new column family option: hint_time_to_live_seconds
+
 3.11.14
  * Suppress CVE-2022-42003 and CVE-2022-42004 (CASSANDRA-17966)
  * Make LongBufferPoolTest insensitive to timing (CASSANDRA-16681)
@@ -243,7 +247,6 @@ Merged from 2.1:
  * Fix Commit log replays when static column clustering keys are collections (CASSANDRA-14365)
  * Fix Red Hat init script on newer systemd versions (CASSANDRA-15273)
  * Allow EXTRA_CLASSPATH to work on tar/source installations (CASSANDRA-15567)
-
 
 3.11.6
  * Fix bad UDT sstable metadata serialization headers written by C* 3.0 on upgrade and in sstablescrub (CASSANDRA-15035)
