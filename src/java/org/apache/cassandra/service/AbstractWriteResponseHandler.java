@@ -119,7 +119,23 @@ public abstract class AbstractWriteResponseHandler<T> implements RequestCallback
             throw new WriteTimeoutException(writeType, replicaPlan.consistencyLevel(), acks, blockedFor);
         }
 
-        if (blockFor() + failures > candidateReplicaCount())
+        boolean writeFailed;
+        if (replicaPlan.consistencyLevel() == ConsistencyLevel.ANY)
+        {
+            // Add a special case for ANY consistency level, so that we will throw a WriteFailureException,
+            // and therefore write hints, if writes to any of the replicas fail.
+            //
+            // We're leaning heavily on hints. Even though hints are not guaranteed, they are our last, best
+            // hope for getting the data on all replicas, since we don't run repairs (too expensive), and we
+            // read at CL.ONE (so don't get read repairs).
+            writeFailed = failures > 0;
+        }
+        else
+        {
+            writeFailed = blockFor() + failures > candidateReplicaCount();
+        }
+
+        if (writeFailed)
         {
             throw new WriteFailureException(replicaPlan.consistencyLevel(), ackCount(), blockFor(), writeType, failureReasonByEndpoint);
         }
